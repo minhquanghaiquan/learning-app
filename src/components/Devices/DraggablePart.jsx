@@ -1,6 +1,18 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useThree } from "@react-three/fiber";
+import { DragControls } from "three/examples/jsm/controls/DragControls";
+import * as THREE from "three";
 import { Html } from "@react-three/drei";
 import ModelGLB from "./ModelGLB";
+
+function Ghost({ target, visible }) {
+  return (
+    <mesh position={target} visible={visible}>
+      <sphereGeometry args={[0.3, 24, 24]} />
+      <meshStandardMaterial color="#2acfff" opacity={0.3} transparent />
+    </mesh>
+  );
+}
 
 export default function DraggablePart({
   name,
@@ -10,58 +22,91 @@ export default function DraggablePart({
   snapRadius = 0.6,
   scale = 1,
   onSnap,
+  orbitRef,      // <-- Nhận ref truyền từ trên xuống
 }) {
   const meshRef = useRef();
-  const [pos, setPos] = useState(position || [0, 0, 0]);
+  const dragControlsRef = useRef();
+  const { camera, gl } = useThree();
+
+  // Đảm bảo giá trị mặc định hợp lệ
+  const safePosition = Array.isArray(position) && position.length === 3 ? position : [0, 0, 0];
+  const safeTarget = Array.isArray(target) && target.length === 3 ? target : [0, 0, 0];
+
   const [snapped, setSnapped] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const [ghostVisible, setGhostVisible] = useState(false);
 
-  const onPointerDown = (e) => {
-    e.stopPropagation();
-    meshRef.current.userData.dragging = true;
-    meshRef.current.userData.offset = [
-      e.point.x - pos[0],
-      e.point.y - pos[1],
-      e.point.z - pos[2],
-    ];
-  };
-  const onPointerMove = (e) => {
-    if (meshRef.current.userData.dragging && !snapped) {
-      setPos([
-        e.point.x - meshRef.current.userData.offset[0],
-        position[1], // lock y
-        e.point.z - meshRef.current.userData.offset[2],
-      ]);
+  // Set vị trí part khi mount hoặc reset snap
+  useEffect(() => {
+    if (meshRef.current && !snapped) {
+      meshRef.current.position.set(...safePosition);
     }
-  };
-  const onPointerUp = () => {
-    meshRef.current.userData.dragging = false;
-    // Check snap
-    const dist = Math.sqrt(
-      (pos[0] - target[0]) ** 2 +
-      (pos[1] - target[1]) ** 2 +
-      (pos[2] - target[2]) ** 2
-    );
-    if (dist < snapRadius) {
-      setPos(target);
-      setSnapped(true);
-      onSnap && onSnap();
+  }, [safePosition, snapped]);
+
+  useEffect(() => {
+    if (!meshRef.current) return;
+
+    if (!dragControlsRef.current) {
+      dragControlsRef.current = new DragControls([meshRef.current], camera, gl.domElement);
+
+      dragControlsRef.current.addEventListener("hoveron", () => setHovered(true));
+      dragControlsRef.current.addEventListener("hoveroff", () => setHovered(false));
+      dragControlsRef.current.addEventListener("dragstart", () => {
+        setGhostVisible(true);
+        gl.domElement.style.cursor = "grabbing";
+        // Disable OrbitControls khi bắt đầu kéo part
+        if (orbitRef && orbitRef.current) orbitRef.current.enabled = false;
+      });
+
+      dragControlsRef.current.addEventListener("dragend", () => {
+        gl.domElement.style.cursor = "pointer";
+        // Enable lại OrbitControls khi thả part
+        if (orbitRef && orbitRef.current) orbitRef.current.enabled = true;
+        // Kiểm tra snap
+        const dist = meshRef.current.position.distanceTo(new THREE.Vector3(...safeTarget));
+        if (dist < snapRadius) {
+          meshRef.current.position.set(...safeTarget);
+          setSnapped(true);
+          setGhostVisible(false);
+          onSnap && onSnap();
+        } else {
+          setGhostVisible(false);
+        }
+      });
+
+      dragControlsRef.current.addEventListener("drag", () => {
+        if (snapped) {
+          meshRef.current.position.set(...safeTarget);
+          return;
+        }
+        const dist = meshRef.current.position.distanceTo(new THREE.Vector3(...safeTarget));
+        setGhostVisible(dist < snapRadius * 2);
+      });
     }
-  };
+
+    // Disable/enable drag khi đã snap
+    if (snapped && dragControlsRef.current) {
+      dragControlsRef.current.deactivate();
+    } else if (!snapped && dragControlsRef.current) {
+      dragControlsRef.current.activate();
+    }
+
+    return () => {
+      if (dragControlsRef.current) dragControlsRef.current.dispose();
+    };
+  }, [camera, gl, safeTarget, snapped, orbitRef]);
 
   return (
-    <group
-      ref={meshRef}
-      position={pos}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerOver={() => setHovered(true)}
-      onPointerOut={() => setHovered(false)}
-      scale={scale}
-    >
-      <ModelGLB url={modelUrl} />
-      {hovered && (
+    <group ref={meshRef} scale={scale}>
+      {modelUrl ? (
+        <ModelGLB url={modelUrl} scale={1} />
+      ) : (
+        <mesh>
+          <boxGeometry args={[0.3, 0.3, 0.3]} />
+          <meshStandardMaterial color={snapped ? "#41db6a" : hovered ? "#1976d2" : "#aaa"} />
+        </mesh>
+      )}
+      {hovered && !snapped && (
         <Html center distanceFactor={8}>
           <div style={{
             background: "#222",
@@ -73,6 +118,7 @@ export default function DraggablePart({
           }}>{name}</div>
         </Html>
       )}
+      <Ghost target={safeTarget} visible={ghostVisible && !snapped} />
     </group>
   );
 }
