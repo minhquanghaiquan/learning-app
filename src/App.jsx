@@ -33,6 +33,7 @@ import FeedbackSection from "./components/Banner/FeedbackSection";
 import Footer from "./components/Footer/Footer";
 import DeviceList from "./components/Devices/DeviceList";
 import DeviceDetail from "./components/Devices/DeviceDetail";
+import QuizPage from "./components/Quiz/QuizPage";
 
 const App = () => {
   return (
@@ -54,6 +55,7 @@ const App = () => {
         />
         <Route path="/devices" element={<DeviceList />} />
         <Route path="/devices/:id" element={<DeviceDetail />} />
+        <Route path="/quiz" element={<QuizPage />} />
         {/* Thêm các route khác nếu muốn */}
       </Routes>
     </Router>

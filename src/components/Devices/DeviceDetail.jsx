@@ -62,6 +62,8 @@ const DeviceDetail = () => {
   return (
     <div className="container max-w-7xl mx-auto py-10 px-2 sm:px-6">
       <Link to="/devices?type=VHF" className="text-blue-600 hover:underline mb-8 block">&larr; Quay lại danh sách</Link>
+      <Link to={`/quiz?deviceId=${device.id}`} className="btn">Trắc nghiệm thiết bị này</Link>
+
 
       {/* Header với ảnh to và tiêu đề */}
       <div className="flex flex-col md:flex-row items-center gap-10 mb-8">

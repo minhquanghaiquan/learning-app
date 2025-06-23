@@ -1,4 +1,5 @@
 import vrs631s from './vrs631s';
+import vru812 from './vru812';
 
 const devices = [
   {
@@ -27,7 +28,7 @@ const devices = [
     summary: "Đài VRU-812 hiện đại.",
     delay: 0.3,
     type: "VHF",
-    details: {}, // Bạn thêm sau nếu có
+    details: vru812, // Bạn thêm sau nếu có
   },
   // ... thêm các thiết bị khác cùng kiểu
 ];
