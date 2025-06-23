@@ -1,124 +1,114 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import { DragControls } from "three/examples/jsm/controls/DragControls";
 import * as THREE from "three";
-import { Html } from "@react-three/drei";
 import ModelGLB from "./ModelGLB";
-
-function Ghost({ target, visible }) {
-  return (
-    <mesh position={target} visible={visible}>
-      <sphereGeometry args={[0.3, 24, 24]} />
-      <meshStandardMaterial color="#2acfff" opacity={0.3} transparent />
-    </mesh>
-  );
-}
 
 export default function DraggablePart({
   name,
   modelUrl,
   position,
   target,
-  snapRadius = 0.6,
   scale = 1,
-  onSnap,
-  orbitRef,      // <-- Nhận ref truyền từ trên xuống
+  orbitRef,
+  enabled = true,
+  resetKey = 0,
 }) {
   const meshRef = useRef();
   const dragControlsRef = useRef();
   const { camera, gl } = useThree();
 
-  // Đảm bảo giá trị mặc định hợp lệ
   const safePosition = Array.isArray(position) && position.length === 3 ? position : [0, 0, 0];
   const safeTarget = Array.isArray(target) && target.length === 3 ? target : [0, 0, 0];
 
-  const [snapped, setSnapped] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [ghostVisible, setGhostVisible] = useState(false);
+  // Kiểm tra hiện tại có đang ở target không
+  const isAtTarget = () => {
+    if (!meshRef.current) return false;
+    const pos = meshRef.current.position;
+    const targetVec = new THREE.Vector3(...safeTarget);
+    return pos.distanceTo(targetVec) < 0.05;
+  };
 
-  // Set vị trí part khi mount hoặc reset snap
-  useEffect(() => {
-    if (meshRef.current && !snapped) {
-      meshRef.current.position.set(...safePosition);
+  // Animate về target khi chuột phải
+  const animateToTarget = () => {
+    if (isAtTarget()) {
+      meshRef.current.position.set(...safeTarget);
+      return;
     }
-  }, [safePosition, snapped]);
+    const interval = setInterval(() => {
+      if (!meshRef.current) return clearInterval(interval);
+      const pos = meshRef.current.position;
+      const targetVec = new THREE.Vector3(...safeTarget);
+      const dist = pos.distanceTo(targetVec);
+      if (dist < 0.05) {
+        meshRef.current.position.set(...safeTarget);
+        clearInterval(interval);
+        return;
+      }
+      pos.lerp(targetVec, 0.25);
+    }, 16);
+  };
 
+  // Chuột phải: animate về target nếu enabled
+  const handlePointerDown = (e) => {
+    if (e.button === 2 && enabled) {
+      e.stopPropagation();
+      animateToTarget();
+    }
+  };
+
+  // DragControls: luôn kéo thả tự do
   useEffect(() => {
     if (!meshRef.current) return;
-
     if (!dragControlsRef.current) {
       dragControlsRef.current = new DragControls([meshRef.current], camera, gl.domElement);
 
-      dragControlsRef.current.addEventListener("hoveron", () => setHovered(true));
-      dragControlsRef.current.addEventListener("hoveroff", () => setHovered(false));
       dragControlsRef.current.addEventListener("dragstart", () => {
-        setGhostVisible(true);
         gl.domElement.style.cursor = "grabbing";
-        // Disable OrbitControls khi bắt đầu kéo part
         if (orbitRef && orbitRef.current) orbitRef.current.enabled = false;
       });
 
       dragControlsRef.current.addEventListener("dragend", () => {
         gl.domElement.style.cursor = "pointer";
-        // Enable lại OrbitControls khi thả part
         if (orbitRef && orbitRef.current) orbitRef.current.enabled = true;
-        // Kiểm tra snap
-        const dist = meshRef.current.position.distanceTo(new THREE.Vector3(...safeTarget));
-        if (dist < snapRadius) {
-          meshRef.current.position.set(...safeTarget);
-          setSnapped(true);
-          setGhostVisible(false);
-          onSnap && onSnap();
-        } else {
-          setGhostVisible(false);
-        }
-      });
-
-      dragControlsRef.current.addEventListener("drag", () => {
-        if (snapped) {
-          meshRef.current.position.set(...safeTarget);
-          return;
-        }
-        const dist = meshRef.current.position.distanceTo(new THREE.Vector3(...safeTarget));
-        setGhostVisible(dist < snapRadius * 2);
       });
     }
 
-    // Disable/enable drag khi đã snap
-    if (snapped && dragControlsRef.current) {
-      dragControlsRef.current.deactivate();
-    } else if (!snapped && dragControlsRef.current) {
-      dragControlsRef.current.activate();
-    }
+    dragControlsRef.current.activate();
 
     return () => {
       if (dragControlsRef.current) dragControlsRef.current.dispose();
     };
-  }, [camera, gl, safeTarget, snapped, orbitRef]);
+  }, [camera, gl, orbitRef, enabled, safeTarget]);
+
+  // Reset về vị trí init khi resetKey thay đổi
+  useEffect(() => {
+    if (meshRef.current) {
+      meshRef.current.position.set(...safePosition);
+    }
+  }, [resetKey, safePosition]);
+
+  // Đảm bảo reset về init nếu enabled=false (tùy yêu cầu workflow)
+  useEffect(() => {
+    if (!enabled && meshRef.current) {
+      meshRef.current.position.set(...safePosition);
+    }
+  }, [enabled, safePosition]);
 
   return (
-    <group ref={meshRef} scale={scale}>
+    <group
+      ref={meshRef}
+      scale={scale}
+      onPointerDown={handlePointerDown}
+    >
       {modelUrl ? (
         <ModelGLB url={modelUrl} scale={1} />
       ) : (
         <mesh>
           <boxGeometry args={[0.3, 0.3, 0.3]} />
-          <meshStandardMaterial color={snapped ? "#41db6a" : hovered ? "#1976d2" : "#aaa"} />
+          <meshStandardMaterial color={"#aaa"} />
         </mesh>
       )}
-      {hovered && !snapped && (
-        <Html center distanceFactor={8}>
-          <div style={{
-            background: "#222",
-            color: "#fff",
-            padding: "4px 12px",
-            borderRadius: 8,
-            fontSize: 14,
-            opacity: 0.85
-          }}>{name}</div>
-        </Html>
-      )}
-      <Ghost target={safeTarget} visible={ghostVisible && !snapped} />
     </group>
   );
 }

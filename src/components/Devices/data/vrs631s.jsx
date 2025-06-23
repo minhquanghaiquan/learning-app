@@ -71,7 +71,11 @@ const vrs631s = {
       id: "antenna",
       name: "Ăng-ten",
       url: "/vrs_631/3d_vrs631/antenna.glb",
-      thumbnail: "/vrs_631/3d_vrs631/antenna-thumb.jpg"
+      thumbnail: "/vrs_631/3d_vrs631/antenna-thumb.jpg",
+            // Vị trí đúng khi ghép xong
+      target: [-2, 1, 0],
+      // Vị trí xuất phát (random để kéo thả)
+      init: [-6, 0, 0],
     },
     {
       id: "power",
